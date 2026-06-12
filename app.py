@@ -466,7 +466,7 @@ if is_admin:
             ca, cb = st.columns(2)
             with ca:
                 if st.button("+ Add Row", use_container_width=True, key="add_row_btn"):
-                    st.session_state.num_rows = min(st.session_state.num_rows + 1, 20)
+                    st.session_state.num_rows = min(st.session_state.num_rows + 1, 30)
                     st.rerun()
             with cb:
                 if st.button("Save Speakers", use_container_width=True, key="save_spk_btn"):
