@@ -1,8 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 from datetime import datetime, date
-import smtplib
-from email.mime.text import MIMEText
+import urllib.parse
 
 st.set_page_config(
     page_title="Toastmasters Pune South East",
@@ -83,35 +82,18 @@ SOCIAL_LINKS = {
 }
 
 ROLE_CATEGORY_MAP = {
-    # Best Main Role Players
-    "TMOD": "main",
-    "GE": "main",
-    "Table Topic Master": "main",
-    
-    # Best Supporting/Auxiliary Role Players
-    "Timer": "aux",
-    "Grammarian": "aux",
-    "Ah Counter": "aux",
-    "ALQ Master": "aux",
-    "Other": "aux",  # catch-all for any other supporting roles
-    
-    # Speaker & Evaluator roles
-    "Prepared Speeches": "speaker",
-    "Evaluators": "evaluator",
-    "Table Topic Speakers": "tt_speaker",
+    "TMOD": "main", "GE": "main", "Table Topic Master": "main",
+    "Timer": "aux", "Grammarian": "aux", "Ah Counter": "aux", "ALQ Master": "aux", "Other": "aux",
+    "Prepared Speeches": "speaker", "Evaluators": "evaluator", "Table Topic Speakers": "tt_speaker",
 }
 
 ALL_ROLES = list(ROLE_CATEGORY_MAP.keys())
-
 VOTING_CATEGORIES = {
-    "Best Main Role Player":              "main",
-    "Best Supporting/Auxiliary Role Player": "aux",
-    "Best Speaker":                       "speaker",
-    "Best Evaluator":                     "evaluator",
-    "Best Table Topic Speaker":           "tt_speaker",
+    "Best Main Role Player": "main", "Best Supporting/Auxiliary Role Player": "aux",
+    "Best Speaker": "speaker", "Best Evaluator": "evaluator", "Best Table Topic Speaker": "tt_speaker",
 }
-
 JOIN_TIMELINE_OPTIONS = ["Within this month", "Next month", "Sometime later"]
+EXCOM_ROLES = ["SAA", "VP Membership", "VP Education", "President", "Secretary", "VP PR", "Treasurer"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPABASE HELPERS
@@ -127,98 +109,98 @@ def today():
 def now_ts():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-# ── Members ───────────────────────────────────────────────────────────────────
 def find_member(identifier):
-    norm = identifier.lower().strip().replace(" ", "").replace("-", "")
+    norm = identifier.lower().strip()
     r = get_sb().table("members").select("*").ilike("email", norm).execute()
-    if r.data:
-        return r.data[0]
+    if r.data: return r.data[0]
     r = get_sb().table("members").select("*").eq("phone", norm).execute()
     return r.data[0] if r.data else None
 
 def update_member_birthday(member_id, day, month):
-    get_sb().table("members").update({
-        "birthday_day": day, "birthday_month": month
-    }).eq("id", member_id).execute()
+    get_sb().table("members").update({"birthday_day": day, "birthday_month": month}).eq("id", member_id).execute()
 
-# ── Attendance ───────────────────────────────────────────────────────────────
+# ── Roster & Attendance management ───────────────────────────────────────────
+def add_new_member(name, phone, email, b_day, b_month, is_active):
+    get_sb().table("members").insert({
+        "name": name, "phone": phone, "email": email.lower().strip(),
+        "birthday_day": b_day, "birthday_month": b_month, "is_active": is_active,
+        "joining_date": today()
+    }).execute()
+
+def update_member_status(member_id, is_active):
+    get_sb().table("members").update({"is_active": is_active}).eq("id", member_id).execute()
+
+def get_all_members():
+    r = get_sb().table("members").select("*").order("name").execute()
+    return r.data or []
+
 def already_attended(member_id):
     r = get_sb().table("attendance").select("id").eq("member_id", member_id).eq("date", today()).execute()
     return len(r.data) > 0
 
 def mark_attendance(member):
     get_sb().table("attendance").insert({
-        "date": today(), "timestamp": now_ts(),
-        "member_id": member["id"], "name": member["name"], "email": member["email"],
+        "date": today(), "timestamp": now_ts(), "member_id": member["id"], "name": member["name"], "email": member["email"],
     }).execute()
 
-# ── Guests ────────────────────────────────────────────────────────────────────
+# ── Guests & Scheduler ────────────────────────────────────────────────────────
 def save_guest(name, phone, source):
-    """Insert guest, return new row id."""
-    r = get_sb().table("guests").insert({
-        "date": today(), "timestamp": now_ts(),
-        "name": name, "phone": phone, "how_heard": source,
-    }).execute()
+    r = get_sb().table("guests").insert({"date": today(), "timestamp": now_ts(), "name": name, "phone": phone, "how_heard": source}).execute()
     return r.data[0]["id"] if r.data else None
 
-def update_guest_lead(guest_id, planning, timeline, vpm_ok):
-    get_sb().table("guests").update({
-        "planning_to_join": planning,
-        "join_timeline": timeline,
-        "vpm_contact_ok": vpm_ok,
-    }).eq("id", guest_id).execute()
+def get_guests_by_date(selected_date):
+    r = get_sb().table("guests").select("*").eq("date", str(selected_date)).execute()
+    return r.data or []
 
-# ── Speakers / roles ──────────────────────────────────────────────────────────
+def update_guest_lead(guest_id, planning, timeline, vpm_ok):
+    get_sb().table("guests").update({"planning_to_join": planning, "join_timeline": timeline, "vpm_contact_ok": vpm_ok}).eq("id", guest_id).execute()
+
+def save_meeting_schedule(meeting_date, role_data):
+    get_sb().table("meeting_schedules").upsert({"meeting_date": str(meeting_date), "roles_json": role_data}).execute()
+
+def get_meeting_schedule(meeting_date):
+    r = get_sb().table("meeting_schedules").select("*").eq("meeting_date", str(meeting_date)).execute()
+    return r.data[0] if r.data else None
+
+def save_meeting_meta(meeting_num, meeting_date):
+    get_sb().table("meetings").upsert({"meeting_number": meeting_num, "date": str(meeting_date)}).execute()
+
+# ── Speakers / Roles ──────────────────────────────────────────────────────────
 def get_today_speakers():
     r = get_sb().table("today_speakers").select("*").eq("date", today()).execute()
     return r.data or []
 
 def set_today_speakers(speakers_list):
-    """speakers_list: [{"name":.., "role":.., "disqualified": bool}, ...]"""
     get_sb().table("today_speakers").delete().eq("date", today()).execute()
     rows = []
     for s in speakers_list:
         rows.append({
-            "date": today(),
-            "speaker_name": s["name"],
-            "role": s["role"],
-            "role_category": ROLE_CATEGORY_MAP.get(s["role"], "other"),
-            "disqualified": s.get("disqualified", False),
+            "date": today(), "speaker_name": s["name"], "role": s["role"],
+            "role_category": ROLE_CATEGORY_MAP.get(s["role"], "other"), "disqualified": s.get("disqualified", False),
         })
-    if rows:
-        get_sb().table("today_speakers").insert(rows).execute()
+    if rows: get_sb().table("today_speakers").insert(rows).execute()
 
-# ── Feedback (structured) ────────────────────────────────────────────────────
+# ── Feedback & Votes ──────────────────────────────────────────────────────────
 def get_feedback_by_user(user_id):
     r = get_sb().table("feedback").select("speaker_name").eq("user_id", user_id).eq("date", today()).execute()
     return {row["speaker_name"] for row in (r.data or [])}
 
-def save_structured_feedback(user_id, user_name, speaker_name, speaker_role,
-                               content, structure, interaction, confidence, overall, extra_text):
+def save_structured_feedback(user_id, user_name, speaker_name, speaker_role, content, structure, interaction, confidence, overall, extra_text):
     get_sb().table("feedback").insert({
-        "date": today(), "timestamp": now_ts(), "user_id": user_id,
-        "user_name": user_name, "speaker_name": speaker_name,
-        "speaker_role": speaker_role,
-        "rating_content": content, "rating_structure": structure,
-        "rating_interaction": interaction, "rating_confidence": confidence,
-        "rating_overall": overall,
-        "feedback_text": extra_text or "",
+        "date": today(), "timestamp": now_ts(), "user_id": user_id, "user_name": user_name, "speaker_name": speaker_name, "speaker_role": speaker_role,
+        "rating_content": content, "rating_structure": structure, "rating_interaction": interaction, "rating_confidence": confidence, "rating_overall": overall, "feedback_text": extra_text or "",
     }).execute()
 
 def get_feedback_for_speaker(speaker_name):
     r = get_sb().table("feedback").select("*").eq("date", today()).eq("speaker_name", speaker_name).execute()
     return r.data or []
 
-# ── Votes ─────────────────────────────────────────────────────────────────────
 def get_votes_by_user(user_id):
     r = get_sb().table("votes").select("category").eq("user_id", user_id).eq("date", today()).execute()
     return {row["category"] for row in (r.data or [])}
 
 def save_vote(user_id, user_name, category, nominee):
-    get_sb().table("votes").insert({
-        "date": today(), "timestamp": now_ts(), "user_id": user_id,
-        "user_name": user_name, "category": category, "nominee": nominee,
-    }).execute()
+    get_sb().table("votes").insert({"date": today(), "timestamp": now_ts(), "user_id": user_id, "user_name": user_name, "category": category, "nominee": nominee}).execute()
 
 def get_vote_tally():
     r = get_sb().table("votes").select("category, nominee").eq("date", today()).execute()
@@ -229,19 +211,13 @@ def get_vote_tally():
         tally[cat][nom] = tally[cat].get(nom, 0) + 1
     return tally
 
-# ── Meeting-level rating ─────────────────────────────────────────────────────
 def save_meeting_rating(user_id, user_name, user_type, overall_rating, general_feedback):
-    get_sb().table("meeting_ratings").insert({
-        "date": today(), "timestamp": now_ts(),
-        "user_id": user_id, "user_name": user_name, "user_type": user_type,
-        "overall_rating": overall_rating, "general_feedback": general_feedback or "",
-    }).execute()
+    get_sb().table("meeting_ratings").insert({"date": today(), "timestamp": now_ts(), "user_id": user_id, "user_name": user_name, "user_type": user_type, "overall_rating": overall_rating, "general_feedback": general_feedback or ""}).execute()
 
 def has_rated_meeting(user_id):
     r = get_sb().table("meeting_ratings").select("id").eq("user_id", user_id).eq("date", today()).execute()
     return len(r.data) > 0
 
-# ── Voting config ─────────────────────────────────────────────────────────────
 def get_voting_open():
     r = get_sb().table("meeting_config").select("value").eq("key", "VotingOpen").execute()
     return r.data[0]["value"].strip().lower() == "yes" if r.data else False
@@ -249,12 +225,9 @@ def get_voting_open():
 def set_voting_open(flag):
     val = "Yes" if flag else "No"
     existing = get_sb().table("meeting_config").select("id").eq("key", "VotingOpen").execute()
-    if existing.data:
-        get_sb().table("meeting_config").update({"value": val}).eq("key", "VotingOpen").execute()
-    else:
-        get_sb().table("meeting_config").insert({"key": "VotingOpen", "value": val}).execute()
+    if existing.data: get_sb().table("meeting_config").update({"value": val}).eq("key", "VotingOpen").execute()
+    else: get_sb().table("meeting_config").insert({"key": "VotingOpen", "value": val}).execute()
 
-# ── Stats ─────────────────────────────────────────────────────────────────────
 def get_today_stats():
     sb = get_sb()
     a = sb.table("attendance").select("id", count="exact").eq("date", today()).execute()
@@ -263,763 +236,369 @@ def get_today_stats():
     return (a.count or 0), (g.count or 0), (f.count or 0)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# EMAIL (anonymous feedback delivery)
+# EMAIL CONTROLS (CASE-INSENSITIVE FALLBACK ROUTINES)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def find_speaker_email(speaker_name):
+    """Fixed: Trims spaces and performs a clean case-insensitive check against rosters"""
+    norm_name = speaker_name.strip().lower()
+    r = get_sb().table("members").select("email,name").execute()
+    for row in (r.data or []):
+        if row.get("name", "").strip().lower() == norm_name:
+            return row["email"]
+    return None
+
 def send_email(to_email, subject, body):
-    """Send plain-text email via Resend API."""
     import requests
-    
     api_key = st.secrets["RESEND_API_KEY"]
     email_from = st.secrets["EMAIL_FROM"]
-    
     response = requests.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {api_key}"},
-        json={
-            "from": email_from,
-            "to": to_email,
-            "subject": subject,
-            "text": body,
-        }
+        json={"from": email_from, "to": to_email, "subject": subject, "text": body}
     )
-    
-    if response.status_code != 200:
-        raise Exception(f"Resend error: {response.text}")
-
-def find_speaker_email(speaker_name):
-    """Look up email by matching speaker_name to a member's name."""
-    r = get_sb().table("members").select("email,name").ilike("name", speaker_name).execute()
-    if r.data:
-        return r.data[0]["email"]
-    return None
+    if response.status_code != 200: raise Exception(f"Resend error: {response.text}")
 
 def already_emailed(speaker_name):
     r = get_sb().table("feedback_email_log").select("id").eq("date", today()).eq("speaker_name", speaker_name).execute()
     return len(r.data) > 0
 
 def mark_emailed(speaker_name):
-    get_sb().table("feedback_email_log").insert({
-        "date": today(), "speaker_name": speaker_name, "sent_at": now_ts(),
-    }).execute()
+    get_sb().table("feedback_email_log").insert({"date": today(), "speaker_name": speaker_name, "sent_at": now_ts()}).execute()
 
 def send_feedback_emails():
-    """For each prepared speaker today, email aggregated anonymous feedback."""
     speakers = [s for s in get_today_speakers() if s.get("role_category") == "speaker"]
-    results = []  # (name, status_message)
-
+    results = []
     for sp in speakers:
         name = sp["speaker_name"]
         if already_emailed(name):
-            results.append((name, "Already sent earlier — skipped."))
+            results.append((name, "Already sent — skipped."))
             continue
-
         fb_list = get_feedback_for_speaker(name)
         if not fb_list:
             results.append((name, "No feedback received — skipped."))
             continue
-
         email = find_speaker_email(name)
         if not email:
-            results.append((name, "⚠️ No email found in Members table — skipped."))
+            results.append((name, "⚠️ no email found in Members table - skipped"))
             continue
 
-        # Build body
-        lines = []
-        lines.append("Hi,")
-        lines.append("")
-        lines.append("It was great to hear your speech at our recent Toastmasters "
-                      "Pune South East meeting! You have received "
-                      f"{len(fb_list)} feedback(s) as below:")
-        lines.append("")
+        lines = ["Hi,", "", f"It was great to hear your speech at our Toastmasters Pune South East meeting! Feedback summary:", ""]
         for i, fb in enumerate(fb_list, start=1):
-            scores = (
-                f"Content {fb.get('rating_content','-')}/3, "
-                f"Structure {fb.get('rating_structure','-')}/3, "
-                f"Interaction {fb.get('rating_interaction','-')}/3, "
-                f"Confidence {fb.get('rating_confidence','-')}/3, "
-                f"Overall {fb.get('rating_overall','-')}/5"
-            )
+            scores = f"Content {fb.get('rating_content','-')}/3, Structure {fb.get('rating_structure','-')}/3, Interaction {fb.get('rating_interaction','-')}/3, Overall {fb.get('rating_overall','-')}/5"
             comment = (fb.get("feedback_text") or "").strip()
-            comment_str = comment if comment else "(no additional comments)"
-            lines.append(f"{i}. [{scores}] - Comments: {comment_str}")
-        lines.append("")
-        lines.append("Keep up the great work!")
-        lines.append("- Toastmasters Pune South East")
-
+            lines.append(f"{i}. [{scores}] - Comments: {comment if comment else '(no comments)'}")
+        lines.append("\nKeep it up!\n- Toastmasters Pune South East")
         body = "\n".join(lines)
-
         try:
-            send_email(email, "Your Speech Feedback — Toastmasters Pune South East", body)
+            send_email(email, "Your Speech Feedback — TMCPSE", body)
             mark_emailed(name)
-            results.append((name, f"✅ Sent to {email} ({len(fb_list)} feedback(s))"))
-        except Exception as e:
-            results.append((name, f"❌ Failed: {e}"))
-
+            results.append((name, f"✅ Sent successfully to {email}"))
+        except Exception as e: results.append((name, f"❌ Failed: {e}"))
     return results
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SESSION STATE
+# SESSION INITIALIZATION & STAGING
 # ══════════════════════════════════════════════════════════════════════════════
 
-for k, v in {
-    "page": "login", "user_type": None, "user_id": None, "user_name": None,
-    "already_attended": False, "admin_mode": False,
-    "guest_id": None, "member_id": None,
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+for k, v in {"page": "login", "user_type": None, "user_id": None, "user_name": None, "already_attended": False, "excom_role": None, "guest_id": None, "member_id": None}.items():
+    if k not in st.session_state: st.session_state[k] = v
 
 is_admin = st.query_params.get("admin", "") == "1"
 page = st.session_state.page
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ADMIN PANEL
+# ROLE-BASED EXCOM ADMIN PANEL (HORIZONTAL NAVIGATION MENU)
 # ══════════════════════════════════════════════════════════════════════════════
 if is_admin:
-    try:
-        ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
-    except Exception:
-        ADMIN_PASSWORD = "toastmasters2024"
-
-    if not st.session_state.admin_mode:
-        st.markdown("""
-        <div class="tm-card" style="max-width:400px;margin:3rem auto;">
-          <div style="text-align:center">
-            <div style="font-size:2rem">🔐</div>
-            <div class="tm-club-name" style="font-size:1.2rem">Admin Panel</div>
-            <div class="tm-tagline">SAA Access Only</div>
-          </div>
-        </div>""", unsafe_allow_html=True)
-        with st.form("admin_login_form"):
-            pwd = st.text_input("Password", type="password", key="admin_pwd_input")
-            if st.form_submit_button("Enter Admin Panel", use_container_width=True):
-                if pwd == ADMIN_PASSWORD:
-                    st.session_state.admin_mode = True
+    if not st.session_state.excom_role:
+        st.markdown('<div class="tm-card" style="max-width:400px;margin:3rem auto;text-align:center;">🔐 <h3>ExCom Dashboard Entry</h3></div>', unsafe_allow_html=True)
+        with st.form("excom_login_form"):
+            chosen_role = st.selectbox("Select Your ExCom Role", EXCOM_ROLES)
+            pwd = st.text_input("Security Access Password", type="password")
+            if st.form_submit_button("Authenticate Access"):
+                if pwd == st.secrets.get("ADMIN_PASSWORD", "toastmasters2024"):
+                    st.session_state.excom_role = chosen_role
                     st.rerun()
-                else:
-                    st.error("Incorrect password.")
+                else: st.error("Incorrect password credentials.")
     else:
-        st.markdown("""
-        <div class="tm-card" style="padding:1.2rem 1.8rem;margin-bottom:1rem;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div>
-              <div class="tm-club-name" style="font-size:1rem;text-align:left">
-                Toastmasters Pune South East</div>
-              <div class="tm-tagline" style="font-size:0.65rem;text-align:left">
-                Sergeant-at-Arms Panel</div>
-            </div>
-            <div class="badge">Admin</div>
-          </div>
-        </div>""", unsafe_allow_html=True)
+        current_role = st.session_state.excom_role
+        st.markdown(f'<div class="tm-card" style="padding:1.2rem; margin-bottom:10px;"><h4 style="margin:0;color:#1a1a2e;">🎤 Toastmasters Pune South East</h4><span class="badge">{current_role} Workspace</span></div>', unsafe_allow_html=True)
+        
+        # ── Mobile-Safe Navigation Bar Alternative (No Sidebar Clutter) ──────
+        if current_role == "SAA":
+            current_tab = st.radio("Navigation Control Panel", ["Today's Roles", "Voting Controls", "Live Statistics", "⚙️ Meeting Generator", "Send Emails"], horizontal=True)
+        elif current_role == "VP Membership":
+            current_tab = st.radio("Navigation Control Panel", ["👤 Member Roster", "Guest Outreach & Data"], horizontal=True)
+        elif current_role == "VP Education":
+            current_tab = st.radio("Navigation Control Panel", ["📅 Agenda Booking Grid", "Learning Pathways Track"], horizontal=True)
+        else:
+            current_tab = "Home Dashboard"
+            st.info(f"Welcome {current_role}. Custom admin workspace modules coming soon!")
 
-        try:
-            speakers    = get_today_speakers()
-            voting_open = get_voting_open()
-        except Exception as e:
-            st.error(f"Error loading data: {e}")
-            st.stop()
-
-        tab1, tab2, tab3, tab4 = st.tabs(
-            ["Today's Roles", "Voting Control", "Live Stats", "Send Feedback Emails"]
-        )
-
-        # ── TAB 1: Today's Roles ────────────────────────────────────────────
-        with tab1:
-            st.markdown(f"**Date:** {today()}")
-            st.caption("Standard roles — select from the dropdown for accurate vote-category mapping.")
-
-            if speakers:
-                st.markdown("**Currently saved:**")
-                for sp in speakers:
-                    dq = " 🚫 DISQUALIFIED" if sp.get("disqualified") else ""
-                    st.markdown(f"🎙️ **{sp['speaker_name']}** — *{sp['role']}*{dq}")
+        # ── SAA MODULE EXECUTION ZONE ────────────────────────────────────────
+        if current_role == "SAA":
+            if current_tab == "Today's Roles":
+                speakers = get_today_speakers()
+                st.write(f"**Meeting Execution Date:** {today()}")
+                if speakers:
+                    st.markdown("**Active Roleplayers Loaded:**")
+                    for s in speakers:
+                        st.markdown(f"- 🎙️ **{s['speaker_name']}** — *{s['role']}* {'(🚫 DQ)' if s['disqualified'] else ''}")
+                
                 st.markdown("---")
-
-            st.markdown("#### Add / Update Today's Speakers & Role Players")
-            st.caption("Fill all names, set role + disqualification, then click Save — replaces today's list.")
-
-            if "num_rows" not in st.session_state:
-                st.session_state.num_rows = max(len(speakers), 3)
-
-            entries = []
-            for i in range(st.session_state.num_rows):
-                ex = speakers[i] if i < len(speakers) else {}
-                ex_name = ex.get("speaker_name", "")
-                ex_role = ex.get("role", "Prepared Speeches")
-                ex_dq   = ex.get("disqualified", False)
-
-                c1, c2, c3 = st.columns([2, 2, 1])
-                with c1:
-                    nm = st.text_input(f"Name {i+1}", value=ex_name,
-                        key=f"sp_n_{i}", placeholder=f"Name {i+1}", label_visibility="collapsed")
-                with c2:
-                    ri = ALL_ROLES.index(ex_role) if ex_role in ALL_ROLES else ALL_ROLES.index("Prepared Speeches")
-                    rl = st.selectbox(f"Role {i+1}", ALL_ROLES, index=ri,
-                        key=f"sp_r_{i}", label_visibility="collapsed")
-                with c3:
-                    dq = st.checkbox("DQ (Timer)", value=ex_dq, key=f"sp_dq_{i}")
-
-                if nm.strip():
-                    entries.append({"name": nm.strip(), "role": rl, "disqualified": dq})
-
-            ca, cb = st.columns(2)
-            with ca:
-                if st.button("+ Add Row", use_container_width=True, key="add_row_btn"):
-                    st.session_state.num_rows = min(st.session_state.num_rows + 1, 30)
+                st.subheader("Modify Live Setup & Add Table Topic Volunteers")
+                if "num_rows" not in st.session_state: st.session_state.num_rows = max(len(speakers), 4)
+                entries = []
+                for i in range(st.session_state.num_rows):
+                    ex = speakers[i] if i < len(speakers) else {}
+                    c1, c2, c3 = st.columns([2, 2, 1])
+                    with c1: nm = st.text_input(f"Name {i+1}", value=ex.get("speaker_name", ""), key=f"saa_n_{i}", label_visibility="collapsed")
+                    with c2: 
+                        idx = ALL_ROLES.index(ex.get("role", "Prepared Speeches")) if ex.get("role") in ALL_ROLES else 0
+                        rl = st.selectbox(f"Role {i+1}", ALL_ROLES, index=idx, key=f"saa_r_{i}", label_visibility="collapsed")
+                    with c3: dq = st.checkbox("DQ", value=ex.get("disqualified", False), key=f"saa_q_{i}")
+                    if nm.strip(): entries.append({"name": nm.strip(), "role": rl, "disqualified": dq})
+                
+                if st.button("+ Append Entry Slot"):
+                    st.session_state.num_rows += 1
                     st.rerun()
-            with cb:
-                if st.button("Save Speakers", use_container_width=True, key="save_spk_btn"):
-                    if not entries:
-                        st.warning("Enter at least one name.")
-                    else:
-                        try:
-                            set_today_speakers(entries)
-                            st.success(f"Saved {len(entries)} entries.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-
-        # ── TAB 2: Voting Control ────────────────────────────────────────────
-        with tab2:
-            st.markdown("#### Master Voting Switch")
-            col = "#2d7a2d" if voting_open else "#722F37"
-            lbl = "VOTING IS OPEN" if voting_open else "VOTING IS CLOSED"
-            st.markdown(f"""<div style="background:{col}22;border:2px solid {col};
-                border-radius:4px;padding:1rem;text-align:center;margin:1rem 0;">
-                <strong style="color:{col};font-size:1.1rem">{lbl}</strong></div>""",
-                unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("Open Voting", use_container_width=True,
-                             disabled=voting_open, key="open_vote_btn"):
-                    set_voting_open(True); st.rerun()
-            with c2:
-                if st.button("Close Voting", use_container_width=True,
-                             disabled=not voting_open, key="close_vote_btn"):
-                    set_voting_open(False); st.rerun()
-
-            st.markdown("---")
-            col_a, col_b = st.columns([3,1])
-            with col_a:
-                st.markdown("#### Live Vote Tally")
-            with col_b:
-                if st.button("🔄 Refresh", key="refresh_tally_btn", use_container_width=True):
+                if st.button("Commit Grid Configuration"):
+                    set_today_speakers(entries)
+                    st.success("Successfully synchronized configuration with live ballot engine.")
                     st.rerun()
-            try:
+
+            elif current_tab == "Voting Controls":
+                v_open = get_voting_open()
+                st.write(f"Ballot Collection State: **{'OPEN' if v_open else 'CLOSED'}**")
+                if st.button("Open Voting System", disabled=v_open): set_voting_open(True); st.rerun()
+                if st.button("Lock Ballots", disabled=not v_open): set_voting_open(False); st.rerun()
+                
+                st.markdown("---")
+                st.subheader("Live Ballot Tally Results")
                 tally = get_vote_tally()
-                if not tally:
-                    st.info("No votes yet.")
+                if not tally: st.info("No user submission criteria matched yet.")
                 else:
-                    for cat, counts in tally.items():
+                    for cat, data in tally.items():
                         st.markdown(f"**{cat}**")
-                        for nom, cnt in sorted(counts.items(), key=lambda x: -x[1]):
-                            st.markdown(f"&nbsp;&nbsp;{nom}: {'█' * cnt} ({cnt})")
-            except Exception as e:
-                st.warning(str(e))
+                        for k, v in data.items(): st.write(f" {k}: {'█'*v} ({v} votes)")
 
-            st.markdown("---")
-            st.markdown("#### Overall Meeting Ratings")
-            try:
-                mr = get_sb().table("meeting_ratings").select("*").eq("date", today()).execute()
-                ratings = mr.data or []
-                if ratings:
-                    avg = sum(r["overall_rating"] for r in ratings) / len(ratings)
-                    st.metric("Average Rating", f"{avg:.1f} / 5", help=f"Based on {len(ratings)} responses")
-                    for r in ratings:
-                        if r.get("general_feedback"):
-                            st.markdown(f"- *{r['user_name']}* ({r['user_type']}): {r['general_feedback']}")
-                else:
-                    st.info("No meeting ratings yet.")
-            except Exception as e:
-                st.warning(str(e))
-
-        # ── TAB 3: Live Stats ────────────────────────────────────────────────
-        with tab3:
-            col_a, col_b = st.columns([3,1])
-            with col_b:
-                if st.button("🔄 Refresh", key="refresh_stats_btn", use_container_width=True):
-                    st.rerun()
-            try:
+            elif current_tab == "Live Statistics":
                 mc, gc, fc = get_today_stats()
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Members In",     mc)
-                c2.metric("Guests Today",   gc)
-                c3.metric("Feedback Given", fc)
-            except Exception as e:
-                st.warning(str(e))
+                st.metric("Checked-in Members", mc)
+                st.metric("Total Guests Logged", gc)
+                st.metric("Submitted Feedbacks", fc)
 
-            st.markdown("---")
-            try:
-                import pandas as pd
-                att = get_sb().table("attendance").select("timestamp,name,email").eq("date", today()).execute()
-                st.markdown("**Attendance**")
-                st.dataframe(pd.DataFrame(att.data or []), use_container_width=True)
+            elif current_tab == "⚙️ Meeting Generator":
+                st.subheader("Dynamic Room Registration & Asset Suite")
+                m_num = st.number_input("Chapter Meeting ID #", value=714, step=1)
+                m_date = st.date_input("Scheduled Execution Date", value=date.today())
+                if st.button("Deploy Dynamic Check-In Infrastructure"):
+                    save_meeting_meta(m_num, m_date)
+                    app_url = f"https://tmcpse-welcome.streamlit.app/?meeting_id={m_num}"
+                    encoded_url = urllib.parse.quote_plus(app_url)
+                    qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
+                    st.success("Attendance database index matrix allocated.")
+                    st.markdown(f"**Live Meeting Registration URL:** [{app_url}]({app_url})")
+                    st.image(qr_api, caption=f"Scan to Check-In for Meeting {m_num}")
 
-                gst = get_sb().table("guests").select(
-                    "timestamp,name,phone,how_heard,planning_to_join,join_timeline,vpm_contact_ok"
-                ).eq("date", today()).execute()
-                st.markdown("**Guests & Leads**")
-                df_g = pd.DataFrame(gst.data or [])
-                st.dataframe(df_g, use_container_width=True)
+            elif current_tab == "Send Emails":
+                if st.button("📧 Dispatch Aggregated Feedback Packages"):
+                    with st.spinner("Processing automated templates..."): logs = send_feedback_emails()
+                    for spk, state in logs: st.write(f"**{spk}**: {state}")
 
-                # Highlight high-intent leads
-                if not df_g.empty and "vpm_contact_ok" in df_g.columns:
-                    hot = df_g[df_g["vpm_contact_ok"] == "Yes, absolutely"]
-                    if not hot.empty:
-                        st.markdown("**🔥 Hot Leads (VPM follow-up requested):**")
-                        st.dataframe(hot, use_container_width=True)
-            except Exception as e:
-                st.warning(str(e))
+        # ── VP MEMBERSHIP MANAGEMENT HUB ─────────────────────────────────────
+        elif current_role == "VP Membership":
+            if current_tab == "👤 Member Roster":
+                st.subheader("Enroll New Member Profile")
+                with st.form("add_member_form"):
+                    n = st.text_input("Full Name")
+                    p = st.text_input("Mobile Contact Number")
+                    e = st.text_input("Email Address Address")
+                    bd = st.selectbox("Birth Day (Optional)", [None] + list(range(1, 32)))
+                    bm = st.selectbox("Birth Month (Optional)", [None] + list(range(1, 13)))
+                    act = st.checkbox("Mark as Active Status", value=True)
+                    if st.form_submit_button("Provision Account"):
+                        if n and p and e:
+                            add_new_member(n, p, e, bd, bm, act)
+                            st.success("Profile written to membership ledger databases.")
+                            st.rerun()
+                        else: st.error("Please fill required fields (Name, Phone, Email).")
+                
+                st.markdown("---")
+                st.subheader("Current Operational Club Roster")
+                roster = get_all_members()
+                for mem in roster:
+                    c1, c2 = st.columns([3, 1])
+                    with c1: st.write(f"👤 **{mem['name']}** ({mem['email']}) — {'🟢 Active' if mem['is_active'] else '🔴 Inactive'}")
+                    with c2:
+                        target_state = not mem['is_active']
+                        btn_label = "Deactivate" if mem['is_active'] else "Activate"
+                        if st.button(btn_label, key=f"t_status_{mem['id']}"):
+                            update_member_status(mem['id'], target_state)
+                            st.rerun()
 
-        # ── TAB 4: Send Feedback Emails ─────────────────────────────────────
-        with tab4:
-            st.markdown("#### Send Anonymous Feedback Emails")
-            st.caption(
-                "Sends each Prepared Speaker an aggregated, anonymous summary of "
-                "today's feedback. Speakers with 0 feedback are skipped automatically. "
-                "Already-sent speakers won't be emailed twice."
-            )
-            speakers_today = [s for s in speakers if s.get("role_category") == "speaker"]
-            if not speakers_today:
-                st.info("No Prepared Speeches configured for today.")
-            else:
-                st.markdown("**Today's Prepared Speakers:**")
-                for s in speakers_today:
-                    fb_count = len(get_feedback_for_speaker(s["speaker_name"]))
-                    sent = "✅ already sent" if already_emailed(s["speaker_name"]) else ""
-                    st.markdown(f"- {s['speaker_name']}: {fb_count} feedback(s) {sent}")
+            elif current_tab == "Guest Outreach & Data":
+                st.subheader("Historical Lead Retrospective Extraction")
+                sel_d = st.date_input("Select Event Date", value=date.today())
+                guests = get_guests_by_date(sel_d)
+                if guests:
+                    st.write(guests)
+                    import pandas as pd
+                    st.download_button("Download Guest Matrix CSV", data=pd.DataFrame(guests).to_csv(index=False), file_name=f"Guests_{sel_d}.csv")
+                else: st.info("No alternative guest matrices found matching selected timestamps.")
 
-                if st.button("📧 Send Feedback Emails Now", key="send_fb_emails_btn"):
-                    with st.spinner("Sending emails..."):
-                        results = send_feedback_emails()
-                    for name, status in results:
-                        st.write(f"**{name}**: {status}")
+        # ── VP EDUCATION CONTROL MODULE ──────────────────────────────────────
+        elif current_role == "VP Education":
+            if current_tab == "📅 Agenda Booking Grid":
+                st.subheader("Forward Schedule Projections Grid")
+                f_date = st.date_input("Target Saturday Date", value=date.today())
+                agenda_fields = ["TMOD", "General Evaluator", "Timer", "Ah Counter", "Grammarian", "Table Topic Master", "Speaker 1", "Speaker 2", "Speaker 3", "Speaker 4", "Evaluator 1", "Evaluator 2", "Evaluator 3", "Evaluator 4"]
+                
+                saved_sched = get_meeting_schedule(f_date) or {}
+                roles_json = saved_sched.get("roles_json", {})
+                
+                with st.form("agenda_booking_form"):
+                    current_payload = {}
+                    for field in agenda_fields:
+                        current_payload[field] = st.text_input(field, value=roles_json.get(field, ""))
+                    if st.form_submit_button("Commit Scheduled Matrix Assignments"):
+                        save_meeting_schedule(f_date, current_payload)
+                        st.success("Master projection sheet configuration cataloged.")
+            
+            elif current_tab == "Learning Pathways Track":
+                st.info("Pathways curriculum tracking sub-matrices staging pipeline active. Integration operational shortly.")
 
-        if st.button("Exit Admin Panel", key="exit_admin_btn"):
-            st.session_state.admin_mode = False
+        if st.button("Terminate Administrative Session"):
+            st.session_state.excom_role = None
             st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LOGIN PAGE
+# MEMBER & GUEST INTERFACE PIPELINES
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "login":
-    st.markdown("""
-    <div class="tm-card">
-      <div style="text-align:center;margin-bottom:2rem">
-        <div style="font-size:2.8rem;margin-bottom:0.3rem">🎤</div>
-        <div class="tm-club-name">Toastmasters<br>Pune South East</div>
-        <hr class="tm-divider">
-        <div class="tm-tagline">Where Leaders Are Made</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
-
-    st.markdown('<div class="badge">Check In</div>', unsafe_allow_html=True)
-    st.markdown("**Enter your email or phone number to check in for today's meeting.**")
-
+    st.markdown('<div class="tm-card"><div style="text-align:center;margin-bottom:2rem"><div style="font-size:2.8rem;">🎤</div><div class="tm-club-name">Toastmasters<br>Pune South East</div><hr class="tm-divider"><div class="tm-tagline">Where Leaders Are Made</div></div></div>', unsafe_allow_html=True)
+    st.markdown('<strong>Check-In Verification Portal</strong>', unsafe_allow_html=True)
     with st.form("checkin_form"):
-        identifier = st.text_input("Email or Phone",
-            placeholder="e.g. john@email.com  or  9876543210",
-            label_visibility="collapsed", key="checkin_id")
-        submitted = st.form_submit_button("Check In", use_container_width=True)
-
-    if submitted:
-        if not identifier.strip():
-            st.error("Please enter your email or phone number.")
-        else:
-            with st.spinner("Checking..."):
-                try:
-                    member = find_member(identifier.strip())
-                except Exception as e:
-                    st.error(f"Connection error: {e}")
-                    st.stop()
-
-            if member:
-                already = already_attended(member["id"])
-                if not already:
-                    mark_attendance(member)
-                st.session_state.update({
-                    "page": "dashboard", "user_type": "member",
-                    "user_id": str(member["id"]), "user_name": member["name"],
-                    "already_attended": already, "member_id": member["id"],
-                })
-                # Check birthday
-                if member.get("birthday_day") is None or member.get("birthday_month") is None:
-                    st.session_state.page = "birthday_prompt"
-                st.rerun()
+        ident = st.text_input("Enter Email or Registered Phone Number")
+        if st.form_submit_button("Verify & Check-In"):
+            if not ident.strip(): st.error("Input sequence must contain identifiers.")
             else:
-                st.session_state.page = "guest_form"
-                st.rerun()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# BIRTHDAY PROMPT (member, only if missing)
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "birthday_prompt":
-    st.markdown("""
-    <div class="tm-card">
-      <div style="text-align:center;margin-bottom:1rem">
-        <div style="font-size:2rem">🎂</div>
-        <div class="tm-club-name" style="font-size:1.2rem">Help us celebrate you!</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
-    st.markdown("Please share your birthday (date & month only — no year needed) "
-                "so we can celebrate with you during our monthly socials.")
-
-    with st.form("birthday_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            day = st.selectbox("Day", list(range(1, 32)), key="bday_day")
-        with c2:
-            month = st.selectbox("Month", [
-                "January","February","March","April","May","June","July",
-                "August","September","October","November","December"
-            ], key="bday_month")
-        c1b, c2b = st.columns(2)
-        with c1b:
-            submitted = st.form_submit_button("Save & Continue", use_container_width=True)
-        with c2b:
-            skipped = st.form_submit_button("Skip for now", use_container_width=True)
-
-    if submitted:
-        month_num = ["January","February","March","April","May","June","July",
-                      "August","September","October","November","December"].index(month) + 1
-        try:
-            update_member_birthday(st.session_state.member_id, day, month_num)
-        except Exception as e:
-            st.warning(f"Could not save birthday: {e}")
-        st.session_state.page = "dashboard"
-        st.rerun()
-
-    if skipped:
-        st.session_state.page = "dashboard"
-        st.rerun()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# GUEST FORM
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "guest_form":
-    st.markdown("""
-    <div class="tm-card">
-      <div style="text-align:center;margin-bottom:1rem">
-        <div style="font-size:2rem">🎉</div>
-        <div class="tm-club-name" style="font-size:1.2rem">Welcome, Guest!</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
-    st.markdown("Looks like you're new here — great to have you! Please tell us a little about yourself.")
-
-    with st.form("guest_form"):
-        name   = st.text_input("Your Full Name *",  placeholder="Priya Sharma", key="g_name")
-        phone  = st.text_input("Phone Number *",    placeholder="9876543210",   key="g_phone")
-        source = st.selectbox("How did you hear about us? *",
-            ["-- Select --","Google","Friend / Word of Mouth","LinkedIn",
-             "Instagram","Facebook","WhatsApp Group","Event Listing","Other"],
-            key="g_source")
-        submitted = st.form_submit_button("Join Today's Meeting", use_container_width=True)
-
-    if submitted:
-        errors = []
-        if not name.strip():          errors.append("Name is required.")
-        if not phone.strip():         errors.append("Phone number is required.")
-        if source == "-- Select --":  errors.append("Please select how you heard about us.")
-        for e in errors:
-            st.error(e)
-        if not errors:
-            guest_id = save_guest(name.strip(), phone.strip(), source)
-            st.session_state.update({
-                "page": "dashboard", "user_type": "guest",
-                "user_id": f"guest_{phone.strip()}", "user_name": name.strip(),
-                "guest_id": guest_id,
-            })
-            st.rerun()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DASHBOARD
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "dashboard":
-    user_name = st.session_state.user_name
-    user_type = st.session_state.user_type
-    user_id   = st.session_state.user_id
-    already   = st.session_state.already_attended
-
-    if user_type == "member":
-        msg = (f"👋 Welcome back, <strong>{user_name}</strong>! Attendance already recorded."
-               if already else
-               f"✅ Attendance marked! Welcome, <strong>{user_name}</strong>!")
-        bc, bg = "#2d7a2d", "#f0f7f0"
-    else:
-        msg = f"🎉 Welcome, <strong>{user_name}</strong>! Glad you joined us today."
-        bc, bg = "#722F37", "#fff7f5"
-
-    st.markdown(f"""
-    <div class="tm-card" style="padding:1.2rem 1.8rem;">
-      <div style="display:flex;align-items:center;gap:1rem;">
-        <div style="font-size:2rem">🎤</div>
-        <div>
-          <div class="tm-club-name" style="font-size:1.1rem;text-align:left">
-            Toastmasters Pune South East</div>
-          <div class="tm-tagline" style="font-size:0.7rem;text-align:left">{today()}</div>
-        </div>
-      </div>
-    </div>
-    <div style="background:{bg};border-left:4px solid {bc};padding:0.9rem 1.2rem;
-         border-radius:3px;margin-bottom:1.5rem;">{msg}</div>
-    """, unsafe_allow_html=True)
-
-    # ── Guest: Connect with Us ──────────────────────────────────────────────
-    if user_type == "guest":
-        st.markdown('<div class="section-title">🔗 Connect with Us</div>', unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="connect-card">
-          <p style="margin-top:0">Stay in the loop with our upcoming meetings and events!</p>
-          <a class="connect-link" href="{SOCIAL_LINKS['linkedin']}" target="_blank">Follow us on LinkedIn</a>
-          <a class="connect-link" href="{SOCIAL_LINKS['instagram']}" target="_blank">Follow us on Instagram</a>
-          <a class="connect-link" href="{SOCIAL_LINKS['whatsapp']}" target="_blank">Join our WhatsApp Community</a>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ── Member: PR Boost ─────────────────────────────────────────────────────
-    if user_type == "member":
-        st.markdown('<div class="section-title">📣 Help Our Club Grow</div>', unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="connect-card">
-          <p style="margin-top:0">Follow our social media handles, and like/share our latest
-          posts to help our PR reach more people!</p>
-          <a class="connect-link" href="{SOCIAL_LINKS['linkedin']}" target="_blank">LinkedIn</a>
-          <a class="connect-link" href="{SOCIAL_LINKS['instagram']}" target="_blank">Instagram</a>
-          <a class="connect-link" href="{SOCIAL_LINKS['whatsapp']}" target="_blank">WhatsApp Community</a>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ── Load meeting data ─────────────────────────────────────────────────────
-    try:
-        speakers      = get_today_speakers()
-        voting_open   = get_voting_open()
-        gave_feedback = get_feedback_by_user(user_id)
-        already_voted = get_votes_by_user(user_id)
-    except Exception as e:
-        st.error(f"Could not load meeting data: {e}")
-        st.stop()
-
-    # ══════════════════════════════════════════════════════════════════════
-    # SPEAKER FEEDBACK (Prepared Speeches ONLY, structured ratings)
-    # ══════════════════════════════════════════════════════════════════════
-    st.markdown('<div class="section-title">🗣️ Speaker Feedback</div>', unsafe_allow_html=True)
-
-    prepared_speakers = [s for s in speakers if s.get("role_category") == "speaker"
-                          and not s.get("disqualified")]
-
-    if not prepared_speakers:
-        st.info("No Prepared Speeches have been added for today's meeting yet.")
-    else:
-        RATING_3 = [1, 2, 3]
-        RATING_5 = [1, 2, 3, 4, 5]
-
-        for sp in prepared_speakers:
-            sp_name = sp["speaker_name"]
-            sp_role = sp["role"]
-            with st.expander(f"**{sp_name}** — {sp_role}", expanded=True):
-                if sp_name in gave_feedback:
-                    st.success("✅ You already submitted feedback for this speaker.")
+                member = find_member(ident.strip())
+                if member:
+                    if not member.get("is_active", True):
+                        st.error("Account membership inactive. Please contact the VP Membership regarding administrative dues status.")
+                        st.stop()
+                    already = already_attended(member["id"])
+                    if not already: mark_attendance(member)
+                    st.session_state.update({"page": "dashboard", "user_type": "member", "user_id": str(member["id"]), "user_name": member["name"], "already_attended": already, "member_id": member["id"]})
+                    if member.get("birthday_day") is None: st.session_state.page = "birthday_prompt"
+                    st.rerun()
                 else:
-                    st.markdown("**Rate the following (1 = needs work, 3 = excellent):**")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        content = st.radio("Content", RATING_3, horizontal=True,
-                            key=f"content_{sp_name}", index=2)
-                        interaction = st.radio("Interaction", RATING_3, horizontal=True,
-                            key=f"interaction_{sp_name}", index=2)
-                    with c2:
-                        structure = st.radio("Structure", RATING_3, horizontal=True,
-                            key=f"structure_{sp_name}", index=2)
-                        confidence = st.radio("Confidence", RATING_3, horizontal=True,
-                            key=f"confidence_{sp_name}", index=2)
-
-                    overall = st.radio("Overall Speech Rating (1-5)", RATING_5,
-                        horizontal=True, key=f"overall_{sp_name}", index=4)
-
-                    extra = st.text_area("Any special/additional feedback? (optional)",
-                        key=f"extra_{sp_name}", placeholder="Optional comments...", height=80)
-
-                    if st.button(f"Submit Feedback for {sp_name}", key=f"btn_{sp_name}"):
-                        save_structured_feedback(
-                            user_id, user_name, sp_name, sp_role,
-                            content, structure, interaction, confidence, overall, extra.strip()
-                        )
-                        st.success("✅ Feedback submitted! Thank you.")
-                        st.rerun()
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ══════════════════════════════════════════════════════════════════════
-    # VOTING (5 categories, disqualified filtered out)
-    # ══════════════════════════════════════════════════════════════════════
-    st.markdown('<div class="section-title">🏆 Vote for Best Roles</div>', unsafe_allow_html=True)
-
-    if not voting_open:
-        st.markdown("""<div class="locked-box">
-          <div style="font-size:2.5rem">🔒</div>
-          <p style="font-size:1.1rem;font-weight:600;margin:0.5rem 0;">Voting is not open yet</p>
-          <p style="color:#888;margin:0">The SAA will unlock voting at the end of the meeting.
-          This page updates automatically — no need to refresh!</p>
-        </div>""", unsafe_allow_html=True)
-        st.caption("⏳ Checking voting status... (auto-refreshes every 15s)")
-        st.markdown(
-            "<script>setTimeout(function(){window.location.reload();}, 15000);</script>",
-            unsafe_allow_html=True,
-        )
-    else:
-        eligible = [s for s in speakers if not s.get("disqualified")]
-
-        def nominees_for(category_key):
-            return [s["speaker_name"] for s in eligible
-                    if s.get("role_category") == category_key]
-
-        categories = {cat: nominees_for(key) for cat, key in VOTING_CATEGORIES.items()}
-        remaining = {c: n for c, n in categories.items() if c not in already_voted and n}
-
-        already_done = {c for c in categories if c in already_voted}
-        no_nominees  = {c for c, n in categories.items() if not n and c not in already_voted}
-
-        if already_done:
-            for c in already_done:
-                st.markdown(f"✅ **{c}** — already voted")
-        if no_nominees:
-            for c in no_nominees:
-                st.caption(f"*No eligible nominees for {c} yet.*")
-
-        if not remaining:
-            st.success("🎉 You have cast all available votes! Thank you.")
-        else:
-            st.markdown("*Cast your votes below — one per category.*")
-            with st.form("voting_form"):
-                selections = {}
-                for cat, nominees in remaining.items():
-                    selections[cat] = st.selectbox(f"🏅 {cat}",
-                        ["-- Select --"] + nominees, key=f"v_{cat}")
-                if st.form_submit_button("Submit Votes", use_container_width=True):
-                    missing = [c for c, s in selections.items() if s == "-- Select --"]
-                    if missing:
-                        st.warning(f"Please select for: {', '.join(missing)}")
-                    else:
-                        for cat, sel in selections.items():
-                            save_vote(user_id, user_name, cat, sel)
-                        st.success("✅ Votes submitted! Thank you!")
-                        st.rerun()
-
-    # ══════════════════════════════════════════════════════════════════════
-    # OVERALL MEETING RATING (mandatory) + optional general feedback
-    # ══════════════════════════════════════════════════════════════════════
-    if voting_open:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<div class="section-title">⭐ Overall Meeting Experience</div>', unsafe_allow_html=True)
-
-        if has_rated_meeting(user_id):
-            st.success("✅ Thanks — you've already rated today's meeting!")
-            # If guest and rated but hasn't done lead form yet, show it
-            if user_type == "guest" and st.session_state.get("guest_id") and not st.session_state.get("lead_form_done"):
-                st.session_state.page = "guest_followup"
-                st.rerun()
-        else:
-            with st.form("meeting_rating_form"):
-                overall_meeting = st.radio(
-                    "Overall Meeting Experience (1-5) *",
-                    [1, 2, 3, 4, 5], horizontal=True, key="overall_meeting_rating", index=4
-                )
-                general_fb = st.text_area(
-                    "General feedback/suggestions for the complete meeting (optional)",
-                    key="general_meeting_feedback", height=90,
-                    placeholder="Anything you'd like to share about today's meeting..."
-                )
-                if st.form_submit_button("Submit Meeting Rating", use_container_width=True):
-                    save_meeting_rating(user_id, user_name, user_type, overall_meeting, general_fb.strip())
-                    st.success("✅ Thank you for your feedback!")
-                    if user_type == "guest" and st.session_state.get("guest_id"):
-                        st.session_state.page = "guest_followup"
+                    st.session_state.page = "guest_form"
                     st.rerun()
 
-    # ── Sign out ──────────────────────────────────────────────────────────
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    if st.button("Sign Out", key="signout_btn"):
-        for k in ["page","user_type","user_id","user_name","already_attended",
-                  "guest_id","member_id","lead_form_done"]:
-            st.session_state.pop(k, None)
+elif page == "birthday_prompt":
+    st.markdown('<div class="tm-card"><div style="text-align:center;">🎂 <h4>Help Us Celebrate You!</h4></div></div>', unsafe_allow_html=True)
+    with st.form("b_form"):
+        d = st.selectbox("Day", list(range(1, 32)))
+        m = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
+        if st.form_submit_button("Save Details"):
+            m_idx = ["January","February","March","April","May","June","July","August","September","October","November","December"].index(m) + 1
+            update_member_birthday(st.session_state.member_id, d, m_idx)
+            st.session_state.page = "dashboard"
+            st.rerun()
+
+elif page == "guest_form":
+    st.markdown('<div class="tm-card"><div style="text-align:center;">🎉 <h4>Welcome, Guest!</h4></div></div>', unsafe_allow_html=True)
+    with st.form("g_form"):
+        nm = st.text_input("Full Name *")
+        ph = st.text_input("Phone Number *")
+        src = st.selectbox("How did you find us? *", ["Google","Word of Mouth","LinkedIn","Instagram","Other"])
+        if st.form_submit_button("Register Attendance"):
+            if nm and ph:
+                gid = save_guest(nm, ph, src)
+                st.session_state.update({"page": "dashboard", "user_type": "guest", "user_id": f"guest_{ph}", "user_name": nm, "guest_id": gid})
+                st.rerun()
+            else: st.error("Please complete all fields.")
+
+elif page == "dashboard":
+    st.write(f"### Welcome {st.session_state.user_name}!")
+    
+    if st.session_state.user_type == "guest":
+        st.markdown(f'<div class="connect-card"><h5>🔗 Stay Connected Community Links</h5><a class="connect-link" href="{SOCIAL_LINKS["whatsapp"]}">Join WhatsApp Hub</a><a class="connect-link" href="{SOCIAL_LINKS["instagram"]}">Follow Instagram Portfolio</a></div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="connect-card"><h5>📣 Support Club PR Engagements</h5><a class="connect-link" href="{SOCIAL_LINKS["linkedin"]}">Share via LinkedIn Network</a></div>', unsafe_allow_html=True)
+
+    # ── Feedback Interface Core ──────────────────────────────────────────────
+    st.markdown('<div class="section-title">🗣️ Constructive Prepared Speech Appraisals</div>', unsafe_allow_html=True)
+    speakers = get_today_speakers()
+    prep = [s for s in speakers if s.get("role_category") == "speaker" and not s.get("disqualified")]
+    
+    if not prep: st.info("No active speech evaluation parameters set for this timeframe.")
+    else:
+        given = get_feedback_by_user(st.session_state.user_id)
+        for s in prep:
+            name = s["speaker_name"]
+            if name in given: st.success(f"✅ Feedback package delivered for {name}.")
+            else:
+                with st.expander(f"Submit Assessment for {name}"):
+                    c = st.slider("Content Analysis", 1, 3, 3, key=f"c_{name}")
+                    st = st.slider("Structural Evaluation", 1, 3, 3, key=f"st_{name}")
+                    txt = st.text_area("Observations & Commendations", key=f"t_{name}")
+                    if st.button("Transmit Feedback", key=f"b_{name}"):
+                        save_structured_feedback(st.session_state.user_id, st.session_state.user_name, name, s["role"], c, st, 3, 3, 5, txt)
+                        st.success("Appraisal compiled successfully.")
+                        st.rerun()
+
+    # ── Voting Staging Container ─────────────────────────────────────────────
+    st.markdown('<div class="section-title">🏆 Cast Ballot Registrations</div>', unsafe_allow_html=True)
+    if not get_voting_open():
+        st.markdown('<div class="locked-box">🔒 <b>Balloting currently locked.</b><br>The SAA will open access towards the closing segment of the session. Check back soon!</div>', unsafe_allow_html=True)
+        if st.button("🔄 Refresh Status Key"): st.rerun()
+    else:
+        voted = get_votes_by_user(st.session_state.user_id)
+        eligible = [s for s in speakers if not s.get("disqualified")]
+        
+        with st.form("ballot_sub_form"):
+            selections = {}
+            for cat, key in VOTING_CATEGORIES.items():
+                options = [s["speaker_name"] for s in eligible if s.get("role_category") == key]
+                if options and cat not in voted:
+                    selections[cat] = st.selectbox(f"🏅 {cat}", ["-- Select Nominee --"] + options)
+            if st.form_submit_button("Finalize Ballot Entry"):
+                for cat, choice in selections.items():
+                    if choice != "-- Select Nominee --": save_vote(st.session_state.user_id, st.session_state.user_name, cat, choice)
+                st.success("Ballot processing finalized.")
+                st.rerun()
+
+    # ── Rating Suite ─────────────────────────────────────────────────────────
+    if get_voting_open() and not has_rated_meeting(st.session_state.user_id):
+        with st.form("m_rate_f"):
+            r = st.radio("Rate overall meeting experience (1-5)", [1,2,3,4,5], horizontal=True)
+            f = st.text_area("General observations")
+            if st.form_submit_button("Log Evaluation Metrics"):
+                save_meeting_rating(st.session_state.user_id, st.session_state.user_name, st.session_state.user_type, r, f)
+                if st.session_state.user_type == "guest": st.session_state.page = "guest_followup"
+                else: st.session_state.page = "thank_you"
+                st.rerun()
+
+    if st.button("Sign Out of Session Dashboard"):
+        for k in ["page","user_type","user_id","user_name","member_id","guest_id"]: st.session_state.pop(k, None)
         st.session_state.page = "login"
         st.rerun()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# GUEST FOLLOW-UP / LEAD GENERATION FORM
-# ══════════════════════════════════════════════════════════════════════════════
 elif page == "guest_followup":
-    st.markdown("""
-    <div class="tm-card">
-      <div style="text-align:center;margin-bottom:1rem">
-        <div style="font-size:2rem">🌟</div>
-        <div class="tm-club-name" style="font-size:1.2rem">Before You Go...</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
-    st.markdown("We'd love to know if Toastmasters Pune South East might be a fit for you!")
-
-    with st.form("guest_lead_form"):
-        planning = st.radio(
-            "Are you planning to join our club?",
-            ["Yes", "No", "Thinking about it"], key="planning_join"
-        )
-
-        timeline = None
-        if planning in ("Yes", "Thinking about it"):
-            timeline = st.selectbox(
-                "When are you tentatively planning to join?",
-                ["-- Select --"] + JOIN_TIMELINE_OPTIONS, key="join_timeline"
-            )
-
-        vpm_ok = st.radio(
-            "Are you okay if our VP Membership connects with you to understand "
-            "your requirements from the club and guide you with more information?",
-            ["Yes, absolutely", "I'll reach out myself"], key="vpm_contact"
-        )
-
-        submitted = st.form_submit_button("Submit & Finish", use_container_width=True)
-
-    if submitted:
-        if planning in ("Yes", "Thinking about it") and timeline == "-- Select --":
-            st.warning("Please select a tentative joining timeline.")
-        else:
-            try:
-                update_guest_lead(
-                    st.session_state.guest_id, planning,
-                    timeline if planning in ("Yes","Thinking about it") else None,
-                    vpm_ok
-                )
-            except Exception as e:
-                st.warning(f"Could not save your response: {e}")
-            st.session_state.lead_form_done = True
+    with st.form("f_g"):
+        p = st.radio("Are you planning to join our chapter community?", ["Yes", "No", "Thinking about it"])
+        v = st.radio("Are you comfortable if our VP Membership contacts you?", ["Yes, absolutely", "I'll reach out myself"])
+        if st.form_submit_button("Complete Registration"):
+            update_guest_lead(st.session_state.guest_id, p, "Soon", v)
             st.session_state.page = "thank_you"
             st.rerun()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# THANK YOU PAGE
-# ══════════════════════════════════════════════════════════════════════════════
 elif page == "thank_you":
-    st.markdown(f"""
-    <div class="tm-card" style="text-align:center">
-      <div style="font-size:3rem">🙏</div>
-      <div class="tm-club-name" style="font-size:1.4rem">Thank You!</div>
-      <p style="margin-top:1rem">We hope you enjoyed today's meeting at
-      Toastmasters Pune South East. We look forward to seeing you again soon!</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class="connect-card" style="text-align:center">
-      <a class="connect-link" href="{SOCIAL_LINKS['linkedin']}" target="_blank">Follow us on LinkedIn</a>
-      <a class="connect-link" href="{SOCIAL_LINKS['instagram']}" target="_blank">Follow us on Instagram</a>
-      <a class="connect-link" href="{SOCIAL_LINKS['whatsapp']}" target="_blank">Join our WhatsApp Community</a>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if st.button("Done", key="done_btn"):
-        for k in ["page","user_type","user_id","user_name","already_attended",
-                  "guest_id","member_id","lead_form_done"]:
-            st.session_state.pop(k, None)
+    st.markdown('<div class="tm-card" style="text-align:center;">🙏 <h3>Thank You!</h3><p>We look forward to welcoming you to our next Chapter gathering.</p></div>', unsafe_allow_html=True)
+    if st.button("Return to Check-In"):
         st.session_state.page = "login"
         st.rerun()
