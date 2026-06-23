@@ -339,34 +339,75 @@ if is_admin:
         # ── SAA MODULE EXECUTION ZONE ────────────────────────────────────────
         if current_role == "SAA":
             if current_tab == "Today's Roles":
-                speakers = get_today_speakers()
-                st.write(f"**Meeting Execution Date:** {today()}")
-                if speakers:
-                    st.markdown("**Active Roleplayers Loaded:**")
-                    for s in speakers:
-                        st.markdown(f"- 🎙️ **{s['speaker_name']}** — *{s['role']}* {'(🚫 DQ)' if s['disqualified'] else ''}")
+                st.subheader("Manage Meeting Specific Roles")
+                
+                # Dynamic date input instead of a hardcoded string
+                target_meeting_date = st.date_input("Target Meeting Date to View/Configure", value=date.today())
+                target_date_str = str(target_meeting_date)
+                
+                # 1. First, fetch any roles currently set for live evaluation on this specific day
+                r = get_sb().table("today_speakers").select("*").eq("date", target_date_str).execute()
+                live_speakers = r.data or []
+                
+                # 2. If nothing is live yet for that day, try pre-loading what the VP Ed mapped out
+                if not live_speakers:
+                    vpe_sched = get_meeting_schedule(target_date_str) or {}
+                    roles_json = vpe_sched.get("roles_json", {})
+                    if roles_json:
+                        # Re-format VP Education matrix to match the live speaker structures
+                        for raw_role, person_name in roles_json.items():
+                            if person_name.strip():
+                                # Clean name/mapping translation
+                                mapped_role = "Prepared Speeches" if "Speaker" in raw_role else ("Evaluators" if "Evaluator" in raw_role else raw_role)
+                                live_speakers.append({"speaker_name": person_name.strip(), "role": mapped_role, "disqualified": False})
+                
+                if live_speakers:
+                    st.markdown(f"**Current Roleplayers for {target_date_str}:**")
+                    for s in live_speakers:
+                        st.markdown(f"- 🎙️ **{s['speaker_name']}** — *{s['role']}* {'(🚫 DQ)' if s.get('disqualified') else ''}")
+                else:
+                    st.info("No active roles or pre-scheduled VP Education configurations found for this date layout.")
                 
                 st.markdown("---")
-                st.subheader("Modify Live Setup & Add Table Topic Volunteers")
-                if "num_rows" not in st.session_state: st.session_state.num_rows = max(len(speakers), 4)
+                st.subheader("Modify Layout & Add Table Topic Volunteers")
+                
+                if f"num_rows_{target_date_str}" not in st.session_state: 
+                    st.session_state[f"num_rows_{target_date_str}"] = max(len(live_speakers), 4)
+                
+                current_rows = st.session_state[f"num_rows_{target_date_str}"]
                 entries = []
-                for i in range(st.session_state.num_rows):
-                    ex = speakers[i] if i < len(speakers) else {}
+                
+                for i in range(current_rows):
+                    ex = live_speakers[i] if i < len(live_speakers) else {}
                     c1, c2, c3 = st.columns([2, 2, 1])
-                    with c1: nm = st.text_input(f"Name {i+1}", value=ex.get("speaker_name", ""), key=f"saa_n_{i}", label_visibility="collapsed")
+                    with c1: 
+                        nm = st.text_input(f"Name {i+1}", value=ex.get("speaker_name", ""), key=f"saa_n_{target_date_str}_{i}", label_visibility="collapsed")
                     with c2: 
                         idx = ALL_ROLES.index(ex.get("role", "Prepared Speeches")) if ex.get("role") in ALL_ROLES else 0
-                        rl = st.selectbox(f"Role {i+1}", ALL_ROLES, index=idx, key=f"saa_r_{i}", label_visibility="collapsed")
-                    with c3: dq = st.checkbox("DQ", value=ex.get("disqualified", False), key=f"saa_q_{i}")
-                    if nm.strip(): entries.append({"name": nm.strip(), "role": rl, "disqualified": dq})
+                        rl = st.selectbox(f"Role {i+1}", ALL_ROLES, index=idx, key=f"saa_r_{target_date_str}_{i}", label_visibility="collapsed")
+                    with c3: 
+                        dq = st.checkbox("DQ", value=ex.get("disqualified", False), key=f"saa_q_{target_date_str}_{i}")
+                    if nm.strip(): 
+                        entries.append({"name": nm.strip(), "role": rl, "disqualified": dq})
                 
                 if st.button("+ Append Entry Slot"):
-                    st.session_state.num_rows += 1
+                    st.session_state[f"num_rows_{target_date_str}"] += 1
                     st.rerun()
+                    
                 if st.button("Commit Grid Configuration"):
-                    set_today_speakers(entries)
-                    st.success("Successfully synchronized configuration with live ballot engine.")
+                    # Delete old rows for this specific target date and save new ones
+                    get_sb().table("today_speakers").delete().eq("date", target_date_str).execute()
+                    rows = []
+                    for s in entries:
+                        rows.append({
+                            "date": target_date_str, "speaker_name": s["name"], "role": s["role"],
+                            "role_category": ROLE_CATEGORY_MAP.get(s["role"], "other"), "disqualified": s["disqualified"],
+                        })
+                    if rows: 
+                        get_sb().table("today_speakers").insert(rows).execute()
+                    st.success(f"Successfully synchronized configuration for {target_date_str}!")
                     st.rerun()
+                    
 
             elif current_tab == "Voting Controls":
                 v_open = get_voting_open()
