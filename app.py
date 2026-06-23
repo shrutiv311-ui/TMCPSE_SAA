@@ -431,15 +431,17 @@ if is_admin:
                 st.metric("Submitted Feedbacks", fc)
 
             elif current_tab == "⚙️ Meeting Generator":
-                st.subheader("Dynamic Room Registration & Asset Suite")
+                st.subheader("Generate Meeting QR Code")
                 m_num = st.number_input("Chapter Meeting ID #", value=714, step=1)
                 m_date = st.date_input("Scheduled Execution Date", value=date.today())
-                if st.button("Deploy Dynamic Check-In Infrastructure"):
+                
+                # Simplified button name from "Deploy Dynamic Check-In Infrastructure"
+                if st.button("Create QR Code & Link"):
                     save_meeting_meta(m_num, m_date)
                     app_url = f"https://tmcpse-welcome.streamlit.app/?meeting_id={m_num}"
                     encoded_url = urllib.parse.quote_plus(app_url)
                     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
-                    st.success("Attendance database index matrix allocated.")
+                    st.success("Meeting created successfully!")
                     st.markdown(f"**Live Meeting Registration URL:** [{app_url}]({app_url})")
                     st.image(qr_api, caption=f"Scan to Check-In for Meeting {m_num}")
 
@@ -508,7 +510,7 @@ if is_admin:
                     
                     # Download action button
                     st.download_button(
-                        label="📥 Download Guest Matrix CSV",
+                        label="📥 Download Guest List",
                         data=df.to_csv(index=False),
                         file_name=f"Guests_{sel_d}.csv",
                         mime="text/csv"
@@ -537,7 +539,8 @@ if is_admin:
             elif current_tab == "Learning Pathways Track":
                 st.info("Pathways curriculum tracking sub-matrices staging pipeline active. Integration operational shortly.")
 
-        if st.button("Terminate Administrative Session"):
+        # Simplified button name from "Terminate Administrative Session"
+        if st.button("Log Out of Admin Panel"):
             st.session_state.excom_role = None
             st.rerun()
 
