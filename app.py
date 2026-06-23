@@ -439,14 +439,41 @@ if is_admin:
                             st.rerun()
 
             elif current_tab == "Guest Outreach & Data":
-                st.subheader("Historical Lead Retrospective Extraction")
+                st.subheader("Guest Attendance & Outreach Tracker")
                 sel_d = st.date_input("Select Event Date", value=date.today())
                 guests = get_guests_by_date(sel_d)
+                
                 if guests:
-                    st.write(guests)
                     import pandas as pd
-                    st.download_button("Download Guest Matrix CSV", data=pd.DataFrame(guests).to_csv(index=False), file_name=f"Guests_{sel_d}.csv")
-                else: st.info("No alternative guest matrices found matching selected timestamps.")
+                    # Convert data to a clean table layout
+                    df = pd.DataFrame(guests)
+                    
+                    # Rename columns to look professional for the user
+                    df_clean = df.rename(columns={
+                        "name": "Guest Name",
+                        "phone": "Contact Number",
+                        "how_heard": "Source",
+                        "planning_to_join": "Intent to Join",
+                        "vpm_contact_ok": "Can VPM Contact?",
+                        "timestamp": "Check-In Time"
+                    })
+                    
+                    # Keep only the columns your VP Membership needs to see
+                    display_cols = ["Guest Name", "Contact Number", "Source", "Intent to Join", "Can VPM Contact?", "Check-In Time"]
+                    available_cols = [c for c in display_cols if c in df_clean.columns]
+                    
+                    # Display as a beautiful interactive table
+                    st.dataframe(df_clean[available_cols], use_container_width=True, hide_index=True)
+                    
+                    # Download action button
+                    st.download_button(
+                        label="📥 Download Guest Matrix CSV",
+                        data=df.to_csv(index=False),
+                        file_name=f"Guests_{sel_d}.csv",
+                        mime="text/csv"
+                    )
+                else: 
+                    st.info("No guest entries recorded for this date yet.")
 
         # ── VP EDUCATION CONTROL MODULE ──────────────────────────────────────
         elif current_role == "VP Education":
