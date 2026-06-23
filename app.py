@@ -334,7 +334,7 @@ if is_admin:
             current_tab = st.radio("Navigation Control Panel", ["📅 Agenda Booking Grid", "Learning Pathways Track"], horizontal=True)
         else:
             current_tab = "Home Dashboard"
-            st.info(f"Welcome {current_role}. Custom admin workspace modules coming soon!")
+            st.info(f"Welcome {current_role}. Hold on tight! Custom admin workspace for your role is coming soon!")
 
         # ── SAA MODULE EXECUTION ZONE ────────────────────────────────────────
         if current_role == "SAA":
@@ -390,11 +390,11 @@ if is_admin:
                     if nm.strip(): 
                         entries.append({"name": nm.strip(), "role": rl, "disqualified": dq})
                 
-                if st.button("+ Append Entry Slot"):
+                if st.button("+ Add more Roles"):
                     st.session_state[f"num_rows_{target_date_str}"] += 1
                     st.rerun()
                     
-                if st.button("Commit Grid Configuration"):
+                if st.button("Save Changes"):
                     # Delete old rows for this specific target date and save new ones
                     get_sb().table("today_speakers").delete().eq("date", target_date_str).execute()
                     rows = []
@@ -412,11 +412,11 @@ if is_admin:
             elif current_tab == "Voting Controls":
                 v_open = get_voting_open()
                 st.write(f"Ballot Collection State: **{'OPEN' if v_open else 'CLOSED'}**")
-                if st.button("Open Voting System", disabled=v_open): set_voting_open(True); st.rerun()
-                if st.button("Lock Ballots", disabled=not v_open): set_voting_open(False); st.rerun()
+                if st.button("Open Voting", disabled=v_open): set_voting_open(True); st.rerun()
+                if st.button("Close Voting", disabled=not v_open): set_voting_open(False); st.rerun()
                 
                 st.markdown("---")
-                st.subheader("Live Ballot Tally Results")
+                st.subheader("Live Vote Tally Results")
                 tally = get_vote_tally()
                 if not tally: st.info("No user submission criteria matched yet.")
                 else:
@@ -446,7 +446,7 @@ if is_admin:
                     st.image(qr_api, caption=f"Scan to Check-In for Meeting {m_num}")
 
             elif current_tab == "Send Emails":
-                if st.button("📧 Dispatch Aggregated Feedback Packages"):
+                if st.button("📧 Send Feedbacks To speaker"):
                     with st.spinner("Processing automated templates..."): logs = send_feedback_emails()
                     for spk, state in logs: st.write(f"**{spk}**: {state}")
 
@@ -461,15 +461,15 @@ if is_admin:
                     bd = st.selectbox("Birth Day (Optional)", [None] + list(range(1, 32)))
                     bm = st.selectbox("Birth Month (Optional)", [None] + list(range(1, 13)))
                     act = st.checkbox("Mark as Active Status", value=True)
-                    if st.form_submit_button("Provision Account"):
+                    if st.form_submit_button("Save Member"):
                         if n and p and e:
                             add_new_member(n, p, e, bd, bm, act)
-                            st.success("Profile written to membership ledger databases.")
+                            st.success("Profile Saved to members databases.")
                             st.rerun()
                         else: st.error("Please fill required fields (Name, Phone, Email).")
                 
                 st.markdown("---")
-                st.subheader("Current Operational Club Roster")
+                st.subheader("Current Club Member Details")
                 roster = get_all_members()
                 for mem in roster:
                     c1, c2 = st.columns([3, 1])
