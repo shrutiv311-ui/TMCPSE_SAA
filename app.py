@@ -617,8 +617,8 @@ elif page == "dashboard":
                     c = st.slider("Content Analysis", 1, 3, 3, key=f"c_{name}")
                     st = st.slider("Structural Evaluation", 1, 3, 3, key=f"st_{name}")
                     # Sanitize key: remove spaces, dots, special chars
-                        safe_name = "".join(c if c.isalnum() else "_" for c in name.lower())
-                        txt = st.text_area("Observations & Commendations", key=f"t_{safe_name}")
+                    safe_name = "".join(c if c.isalnum() else "_" for c in name.lower())
+                    txt = st.text_area("Observations & Commendations", key=f"t_{safe_name}")
                     if st.button("Transmit Feedback", key=f"b_{name}"):
                         save_structured_feedback(st.session_state.user_id, st.session_state.user_name, name, s["role"], c, st, 3, 3, 5, txt)
                         st.success("Appraisal compiled successfully.")
