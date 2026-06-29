@@ -614,14 +614,16 @@ elif page == "dashboard":
             if name in given: st.success(f"✅ Feedback package delivered for {name}.")
             else:
                 with st.expander(f"Submit Assessment for {name}"):
-                    content = st.slider("Content Analysis", 1, 3, 3, key=f"c_{name}")
-                    structure = st.slider("Structural Evaluation", 1, 3, 3, key=f"st_{name}")
+                    content = st.radio("Content (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"c_{name}", index=2)
+                    structure = st.radio("Structure (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"st_{name}", index=2)
+                    interaction = st.radio("Interaction (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"int_{name}", index=2)
+                    confidence = st.radio("Confidence (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"con_{name}", index=2)
                     # Sanitize key: remove spaces, dots, special chars
                     safe_name = "".join(char.lower() if char.isalnum() else "_" for char in name)
                     txt = st.text_area("Observations & Commendations", key=f"t_{safe_name}")
-                    if st.button("Transmit Feedback", key=f"b_{name}"):
-                        save_structured_feedback(st.session_state.user_id, st.session_state.user_name, name, s["role"], content, structure, 3, 3, 5, txt)
-                        st.success("Appraisal compiled successfully.")
+                    if st.button("Submit Feedback", key=f"b_{name}"):
+                        save_structured_feedback(st.session_state.user_id, st.session_state.user_name, name, s["role"], content, structure, interaction, confidence, 5, txt)
+                        st.success("✅ Feedback submitted.")
                         st.rerun()
 
     # ── Voting Staging Container ─────────────────────────────────────────────
@@ -639,10 +641,10 @@ elif page == "dashboard":
                 options = [s["speaker_name"] for s in eligible if s.get("role_category") == key]
                 if options and cat not in voted:
                     selections[cat] = st.selectbox(f"🏅 {cat}", ["-- Select Nominee --"] + options)
-            if st.form_submit_button("Finalize Ballot Entry"):
+            if st.form_submit_button("Cast My Votes"):
                 for cat, choice in selections.items():
                     if choice != "-- Select Nominee --": save_vote(st.session_state.user_id, st.session_state.user_name, cat, choice)
-                st.success("Ballot processing finalized.")
+                st.success("✅ Votes Submitted!")
                 st.rerun()
 
     # ── Rating Suite ─────────────────────────────────────────────────────────
@@ -650,7 +652,7 @@ elif page == "dashboard":
         with st.form("m_rate_f"):
             r = st.radio("Rate overall meeting experience (1-5)", [1,2,3,4,5], horizontal=True)
             f = st.text_area("General observations")
-            if st.form_submit_button("Log Evaluation Metrics"):
+            if st.form_submit_button("Submit Meeting Rating"):
                 save_meeting_rating(st.session_state.user_id, st.session_state.user_name, st.session_state.user_type, r, f)
                 if st.session_state.user_type == "guest": st.session_state.page = "guest_followup"
                 else: st.session_state.page = "thank_you"
