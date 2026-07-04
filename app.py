@@ -438,7 +438,7 @@ if is_admin:
                 # Simplified button name from "Deploy Dynamic Check-In Infrastructure"
                 if st.button("Create QR Code & Link"):
                     save_meeting_meta(m_num, m_date)
-                    app_url = f"https://tmcpse-welcome.streamlit.app/?meeting_id={m_num}"
+                    app_url = f"https://tmcpse.streamlit.app/?meeting_id={m_num}"
                     encoded_url = urllib.parse.quote_plus(app_url)
                     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
                     st.success("Meeting created successfully!")
