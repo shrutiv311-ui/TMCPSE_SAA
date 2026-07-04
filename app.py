@@ -457,7 +457,7 @@ if is_admin:
 
                     st.success("Meeting created successfully!")
                     # Use the explicit public variable here
-                    st.markdown(f"**Live Meeting Registration URL:** [{correct_public_url}]({correct_public_url})")
+                    st.markdown(f"**Live Meeting Registration URL:** [{app_url}]({app_url})")
                     # Display the updated QR code image
                     st.image(qr_api, caption=f"Scan to Check-In for Meeting {m_num}")
 
