@@ -436,13 +436,28 @@ if is_admin:
                 m_date = st.date_input("Scheduled Execution Date", value=date.today())
                 
                 # Simplified button name from "Deploy Dynamic Check-In Infrastructure"
+                elif current_tab == "⚙️ Meeting Generator":
+                st.subheader("Generate Meeting QR Code")
+                m_num = st.number_input("Chapter Meeting ID #", value=715, step=1)
+                m_date = st.date_input("Scheduled Execution Date", value=date.today())
+                
                 if st.button("Create QR Code & Link"):
                     save_meeting_meta(m_num, m_date)
-                    app_url = f"https://tmcpse.streamlit.app/?meeting_id={m_num}"
-                    encoded_url = urllib.parse.quote_plus(app_url)
+                    
+                    # 1. FORCE THE CORRECT PUBLIC DOMAIN EVERYWHERE
+                    correct_public_url = f"https://tmcpse-welcome.streamlit.app/?meeting_id={m_num}"
+                    
+                    # 2. IMPORT AND ENCODE IT SAFELY FOR THE QR API
+                    import urllib.parse
+                    encoded_url = urllib.parse.quote_plus(correct_public_url)
+                    
+                    # 3. PASS THE ENCODED PUBLIC URL TO THE GENERATOR
                     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
+                    
                     st.success("Meeting created successfully!")
-                    st.markdown(f"**Live Meeting Registration URL:** [{app_url}]({app_url})")
+                    # Use the explicit public variable here
+                    st.markdown(f"**Live Meeting Registration URL:** [{correct_public_url}]({correct_public_url})")
+                    # Display the updated QR code image
                     st.image(qr_api, caption=f"Scan to Check-In for Meeting {m_num}")
 
             elif current_tab == "Send Emails":
@@ -586,7 +601,7 @@ elif page == "guest_form":
         nm = st.text_input("Full Name *")
         ph = st.text_input("Phone Number *")
         src = st.selectbox("How did you find us? *", ["Google","Word of Mouth","LinkedIn","Instagram","Other"])
-        if st.form_submit_button("Register Attendance"):
+        if st.form_submit_button("Mark Attendance"):
             if nm and ph:
                 gid = save_guest(nm, ph, src)
                 st.session_state.update({"page": "dashboard", "user_type": "guest", "user_id": f"guest_{ph}", "user_name": nm, "guest_id": gid})
@@ -619,7 +634,7 @@ elif page == "dashboard":
                     # Sanitize key: remove spaces, dots, special chars
                     safe_name = "".join(c.lower() if c.isalnum() else "_" for c in name)
                     txt = st.text_area("Observations & Commendations", key=f"t_{safe_name}")
-                    if st.button("Transmit Feedback", key=f"b_{name}"):
+                    if st.button("Submit Feedback", key=f"b_{name}"):
                         save_structured_feedback(st.session_state.user_id, st.session_state.user_name, name, s["role"], c, st, 3, 3, 5, txt)
                         st.success("Appraisal compiled successfully.")
                         st.rerun()
