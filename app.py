@@ -444,16 +444,17 @@ if is_admin:
                 if st.button("Create QR Code & Link"):
                     save_meeting_meta(m_num, m_date)
                     
-                    # 1. FORCE THE CORRECT PUBLIC DOMAIN EVERYWHERE
-                    correct_public_url = f"https://tmcpse.streamlit.app/?meeting_id={m_num}"
-                    
-                    # 2. IMPORT AND ENCODE IT SAFELY FOR THE QR API
-                    import urllib.parse
-                    encoded_url = urllib.parse.quote_plus(correct_public_url)
-                    
+                    # UPDATE THIS LINE WITH YOUR NEW PUBLIC URL
+                    base_public_url = "https://tmcpse.streamlit.app"
+
+                    # The rest of the logic builds the query parameters perfectly on top of it
+                    app_url = f"{base_public_url}/?meeting_id={m_num}"
+
                     # 3. PASS THE ENCODED PUBLIC URL TO THE GENERATOR
+                    import urllib.parse
+                    encoded_url = urllib.parse.quote_plus(app_url)
                     qr_api = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
-                    
+
                     st.success("Meeting created successfully!")
                     # Use the explicit public variable here
                     st.markdown(f"**Live Meeting Registration URL:** [{correct_public_url}]({correct_public_url})")
