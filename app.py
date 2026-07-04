@@ -445,7 +445,7 @@ if is_admin:
                     save_meeting_meta(m_num, m_date)
                     
                     # 1. FORCE THE CORRECT PUBLIC DOMAIN EVERYWHERE
-                    correct_public_url = f"https://tmcpse-welcome.streamlit.app/?meeting_id={m_num}"
+                    correct_public_url = f"https://tmcpse.streamlit.app/?meeting_id={m_num}"
                     
                     # 2. IMPORT AND ENCODE IT SAFELY FOR THE QR API
                     import urllib.parse
