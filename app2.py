@@ -82,7 +82,7 @@ SOCIAL_LINKS = {
 }
 
 ROLE_CATEGORY_MAP = {
-    "TMOD": "main", "GE": "main", "Table Topic Master": "main",
+    "TMOD": "main", "GE": "main", "Table Topic Master": "main", "Round Robin Master": "main",
     "Timer": "aux", "Grammarian": "aux", "Ah Counter": "aux", "ALQ Master": "aux", "Other": "aux",
     "Prepared Speeches": "speaker", "Evaluators": "evaluator", "Table Topic Speakers": "tt_speaker",
 }
