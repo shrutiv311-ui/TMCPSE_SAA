@@ -532,9 +532,9 @@ if is_admin:
                     current_payload = {}
                     for field in agenda_fields:
                         current_payload[field] = st.text_input(field, value=roles_json.get(field, ""))
-                    if st.form_submit_button("Commit Scheduled Matrix Assignments"):
+                    if st.form_submit_button("Save Meeting Roles"):
                         save_meeting_schedule(f_date, current_payload)
-                        st.success("Master projection sheet configuration cataloged.")
+                        st.success("Roles for this meeting have been assigned")
             
             elif current_tab == "Learning Pathways Track":
                 st.info("Pathways curriculum tracking sub-matrices staging pipeline active. Integration operational shortly.")
@@ -551,7 +551,7 @@ elif page == "login":
     st.markdown('<div class="tm-card"><div style="text-align:center;margin-bottom:2rem"><div style="font-size:2.8rem;">🎤</div><div class="tm-club-name">Toastmasters<br>Pune South East</div><hr class="tm-divider"><div class="tm-tagline">Where Leaders Are Made</div></div></div>', unsafe_allow_html=True)
     st.markdown('<strong>Check-In Verification Portal</strong>', unsafe_allow_html=True)
     with st.form("checkin_form"):
-        ident = st.text_input("Enter Email or Registered Phone Number")
+        ident = st.text_input("Enter Registered Email")
         if st.form_submit_button("Verify & Check-In"):
             if not ident.strip(): st.error("Input sequence must contain identifiers.")
             else:
@@ -563,14 +563,14 @@ elif page == "login":
                     already = already_attended(member["id"])
                     if not already: mark_attendance(member)
                     st.session_state.update({"page": "dashboard", "user_type": "member", "user_id": str(member["id"]), "user_name": member["name"], "already_attended": already, "member_id": member["id"]})
-                    if member.get("birthday_day") is None: st.session_state.page = "birthday_prompt"
+                    # if member.get("birthday_day") is None: st.session_state.page = "birthday_prompt"
                     st.rerun()
                 else:
                     st.session_state.page = "guest_form"
                     st.rerun()
 
 elif page == "birthday_prompt":
-    st.markdown('<div class="tm-card"><div style="text-align:center;">🎂 <h4>Help Us Celebrate You!</h4></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="tm-card"><div style="text-align:center;">🎂 <h4>Help Us Celebrate You! Add your birthday below (Just an Day and Month)</h4></div></div>', unsafe_allow_html=True)
     with st.form("b_form"):
         d = st.selectbox("Day", list(range(1, 32)))
         m = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"])
@@ -586,7 +586,7 @@ elif page == "guest_form":
         nm = st.text_input("Full Name *")
         ph = st.text_input("Phone Number *")
         src = st.selectbox("How did you find us? *", ["Google","Word of Mouth","LinkedIn","Instagram","Other"])
-        if st.form_submit_button("Register Attendance"):
+        if st.form_submit_button("Register for today's meeting"):
             if nm and ph:
                 gid = save_guest(nm, ph, src)
                 st.session_state.update({"page": "dashboard", "user_type": "guest", "user_id": f"guest_{ph}", "user_name": nm, "guest_id": gid})
@@ -602,35 +602,35 @@ elif page == "dashboard":
         st.markdown(f'<div class="connect-card"><h5>📣 Support Club PR Engagements</h5><a class="connect-link" href="{SOCIAL_LINKS["linkedin"]}">Share via LinkedIn Network</a></div>', unsafe_allow_html=True)
 
     # ── Feedback Interface Core ──────────────────────────────────────────────
-    st.markdown('<div class="section-title">🗣️ Constructive Prepared Speech Appraisals</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🗣️ Prepared Speech Feedbacks</div>', unsafe_allow_html=True)
     speakers = get_today_speakers()
     prep = [s for s in speakers if s.get("role_category") == "speaker" and not s.get("disqualified")]
     
-    if not prep: st.info("No active speech evaluation parameters set for this timeframe.")
+    if not prep: st.info("No prepared speeches for today.")
     else:
         given = get_feedback_by_user(st.session_state.user_id)
         for s in prep:
             name = s["speaker_name"]
             if name in given: st.success(f"✅ Feedback package delivered for {name}.")
             else:
-                with st.expander(f"Submit Assessment for {name}"):
+                with st.expander(f"Submit speech feedback for {name}"):
                     content = st.radio("Content (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"c_{name}", index=2)
                     structure = st.radio("Structure (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"st_{name}", index=2)
                     interaction = st.radio("Interaction (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"int_{name}", index=2)
                     confidence = st.radio("Confidence (1=needs work, 3=excellent)", [1, 2, 3], horizontal=True, key=f"con_{name}", index=2)
                     # Sanitize key: remove spaces, dots, special chars
                     safe_name = "".join(char.lower() if char.isalnum() else "_" for char in name)
-                    txt = st.text_area("Observations & Commendations", key=f"t_{safe_name}")
+                    txt = st.text_area("What are your Observations & Commendations", key=f"t_{safe_name}")
                     if st.button("Submit Feedback", key=f"b_{name}"):
                         save_structured_feedback(st.session_state.user_id, st.session_state.user_name, name, s["role"], content, structure, interaction, confidence, 5, txt)
                         st.success("✅ Feedback submitted.")
                         st.rerun()
 
     # ── Voting Staging Container ─────────────────────────────────────────────
-    st.markdown('<div class="section-title">🏆 Cast Ballot Registrations</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🏆 Voting Section</div>', unsafe_allow_html=True)
     if not get_voting_open():
-        st.markdown('<div class="locked-box">🔒 <b>Balloting currently locked.</b><br>The SAA will open access towards the closing segment of the session. Check back soon!</div>', unsafe_allow_html=True)
-        if st.button("🔄 Refresh Status Key"): st.rerun()
+        st.markdown('<div class="locked-box">🔒 <b>Voting is currently locked.</b><br>The SAA will open access towards the end of the meeting. Check back soon!</div>', unsafe_allow_html=True)
+        if st.button("🔄 Refresh Status"): st.rerun()
     else:
         voted = get_votes_by_user(st.session_state.user_id)
         eligible = [s for s in speakers if not s.get("disqualified")]
