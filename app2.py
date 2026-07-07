@@ -541,7 +541,7 @@ if is_admin:
 
         # ── VP EDUCATION CONTROL MODULE ──────────────────────────────────────
         elif current_role == "VP Education":
-            elif current_tab == "📅 Agenda Booking Grid":
+            if current_tab == "📅 Agenda Booking Grid":
                 st.subheader("Forward Schedule Projections Grid")
                 f_date = st.date_input("Target Saturday Date", value=date.today())
                 agenda_fields = ["TMOD", "General Evaluator", "Timer", "Ah Counter", "Grammarian", "Table Topic Master", "Round Robin Master", "Speaker 1", "Speaker 2", "Speaker 3", "Speaker 4", "Evaluator 1", "Evaluator 2", "Evaluator 3", "Evaluator 4"]
