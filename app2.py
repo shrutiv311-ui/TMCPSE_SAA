@@ -134,6 +134,15 @@ def get_all_members():
     r = get_sb().table("members").select("*").order("name").execute()
     return r.data or []
 
+def get_active_member_display_names():
+    """Fetches list of active display names for drop-down selections"""
+    try:
+        r = get_sb().table("members").select("display_name").eq("is_active", True).order("display_name").execute()
+        # Fallback to official name if display_name is empty for some rows
+        return [row["display_name"].strip() for row in (r.data or []) if row.get("display_name")]
+    except Exception:
+        return []    
+
 def already_attended(member_id):
     r = get_sb().table("attendance").select("id").eq("member_id", member_id).eq("date", today()).execute()
     return len(r.data) > 0
@@ -377,11 +386,23 @@ if is_admin:
                 current_rows = st.session_state[f"num_rows_{target_date_str}"]
                 entries = []
                 
+                # UPDATED: Fetch active member display names from database and handle index selection safely
+                active_member_names = [""] + get_active_member_display_names()
+                
                 for i in range(current_rows):
                     ex = live_speakers[i] if i < len(live_speakers) else {}
                     c1, c2, c3 = st.columns([2, 2, 1])
                     with c1: 
-                        nm = st.text_input(f"Name {i+1}", value=ex.get("speaker_name", ""), key=f"saa_n_{target_date_str}_{i}", label_visibility="collapsed")
+                        # UPDATED: Replaced text_input with searchable selectbox dropdown
+                        saved_spk_name = ex.get("speaker_name", "").strip()
+                        spk_idx = active_member_names.index(saved_spk_name) if saved_spk_name in active_member_names else 0
+                        nm = st.selectbox(
+                            f"Name {i+1}", 
+                            options=active_member_names, 
+                            index=spk_idx, 
+                            key=f"saa_n_{target_date_str}_{i}", 
+                            label_visibility="collapsed"
+                        )
                     with c2: 
                         idx = ALL_ROLES.index(ex.get("role", "Prepared Speeches")) if ex.get("role") in ALL_ROLES else 0
                         rl = st.selectbox(f"Role {i+1}", ALL_ROLES, index=idx, key=f"saa_r_{target_date_str}_{i}", label_visibility="collapsed")
@@ -520,7 +541,7 @@ if is_admin:
 
         # ── VP EDUCATION CONTROL MODULE ──────────────────────────────────────
         elif current_role == "VP Education":
-            if current_tab == "📅 Agenda Booking Grid":
+            elif current_tab == "📅 Agenda Booking Grid":
                 st.subheader("Forward Schedule Projections Grid")
                 f_date = st.date_input("Target Saturday Date", value=date.today())
                 agenda_fields = ["TMOD", "General Evaluator", "Timer", "Ah Counter", "Grammarian", "Table Topic Master", "Round Robin Master", "Speaker 1", "Speaker 2", "Speaker 3", "Speaker 4", "Evaluator 1", "Evaluator 2", "Evaluator 3", "Evaluator 4"]
@@ -528,13 +549,24 @@ if is_admin:
                 saved_sched = get_meeting_schedule(f_date) or {}
                 roles_json = saved_sched.get("roles_json", {})
                 
+                # Fetch active member names from the database
+                active_member_names = [""] + get_active_member_display_names()
+                
                 with st.form("agenda_booking_form"):
                     current_payload = {}
                     for field in agenda_fields:
-                        current_payload[field] = st.text_input(field, value=roles_json.get(field, ""))
+                        # Get previously saved value
+                        saved_val = roles_json.get(field, "").strip()
+                        
+                        # Find index of saved value in our active members list
+                        default_idx = active_member_names.index(saved_val) if saved_val in active_member_names else 0
+                        
+                        # CHANGED: Changed from text_input to selectbox dropdown
+                        current_payload[field] = st.selectbox(field, options=active_member_names, index=default_idx)
+                        
                     if st.form_submit_button("Save Meeting Roles"):
                         save_meeting_schedule(f_date, current_payload)
-                        st.success("Roles for this meeting have been assigned")
+                        st.success("Meeting Roles Saved Successfully.")
             
             elif current_tab == "Learning Pathways Track":
                 st.info("Pathways curriculum tracking sub-matrices staging pipeline active. Integration operational shortly.")
