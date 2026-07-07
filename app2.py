@@ -665,7 +665,7 @@ elif page == "dashboard":
 
 elif page == "guest_followup":
     with st.form("f_g"):
-        p = st.radio("Are you planning to join our chapter community?", ["Yes", "No", "Thinking about it"])
+        p = st.radio("Are you planning to join our Toastmaster Club?", ["Yes", "No", "Thinking about it"])
         v = st.radio("Are you comfortable if our VP Membership contacts you?", ["Yes, absolutely", "I'll reach out myself"])
         if st.form_submit_button("Complete Registration"):
             update_guest_lead(st.session_state.guest_id, p, "Soon", v)
