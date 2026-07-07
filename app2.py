@@ -597,9 +597,9 @@ elif page == "dashboard":
     st.write(f"### Welcome {st.session_state.user_name}!")
     
     if st.session_state.user_type == "guest":
-        st.markdown(f'<div class="connect-card"><h5>🔗 Stay Connected Community Links</h5><a class="connect-link" href="{SOCIAL_LINKS["whatsapp"]}">Join WhatsApp Hub</a><a class="connect-link" href="{SOCIAL_LINKS["instagram"]}">Follow Instagram Portfolio</a></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="connect-card"><h5>🔗 Stay Connected with us on social media</h5><a class="connect-link" href="{SOCIAL_LINKS["whatsapp"]}">Join WhatsApp Group</a><a class="connect-link" href="{SOCIAL_LINKS["instagram"]}">Follow us on Instagram </a><a class="connect-link" href="{SOCIAL_LINKS["linkedin"]}">Connect with us on LinkedIn Network</a></div>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div class="connect-card"><h5>📣 Support Club PR Engagements</h5><a class="connect-link" href="{SOCIAL_LINKS["linkedin"]}">Share via LinkedIn Network</a></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="connect-card"><h5>📣 Support Club PR Engagements</h5><a class="connect-link" href="{SOCIAL_LINKS["linkedin"]}">Share via LinkedIn Network</a><a class="connect-link" href="{SOCIAL_LINKS["instagram"]}">Follow, Like and Share on Instagram </a></div>', unsafe_allow_html=True)
 
     # ── Feedback Interface Core ──────────────────────────────────────────────
     st.markdown('<div class="section-title">🗣️ Prepared Speech Feedbacks</div>', unsafe_allow_html=True)
