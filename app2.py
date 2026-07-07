@@ -673,7 +673,7 @@ elif page == "guest_followup":
             st.rerun()
 
 elif page == "thank_you":
-    st.markdown('<div class="tm-card" style="text-align:center;">🙏 <h3>Thank You!</h3><p>We look forward to welcoming you to our next Chapter gathering.</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="tm-card" style="text-align:center;">🙏 <h3>Thank You!</h3><p>We look forward to welcoming you to our next meeting.</p></div>', unsafe_allow_html=True)
     if st.button("Return to Check-In"):
         st.session_state.page = "login"
         st.rerun()
