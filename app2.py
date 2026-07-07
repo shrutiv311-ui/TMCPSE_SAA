@@ -426,7 +426,7 @@ if is_admin:
                         })
                     if rows: 
                         get_sb().table("today_speakers").insert(rows).execute()
-                    st.success(f"Successfully synchronized configuration for {target_date_str}!")
+                    st.success(f"Successfully saved meeting roles for {target_date_str}!")
                     st.rerun()
                     
 
